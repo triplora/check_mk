@@ -1,0 +1,94 @@
+#!/bin/bash
+# Plugin XEN/XCP for check_mk
+#Created by Roger Ricardo Rukat de Azevedo - R3A
+look_for_xen()
+{
+if ps -ef | grep xend | grep -v grep 1>/dev/null || test -x /etc/init.d/xen-domain-uuid 2>/dev/null
+  then 
+	return 0
+fi
+return 1
+}   
+
+setup_cmds()
+{
+
+running_vms=error
+# get the vms running
+vms_list_command=$(cat /etc/check_mk/xen-vars|awk -F ";" '/vms_list_command/ {print $2}')
+vmlist=$($vms_list_command | grep -v Name)
+running_vms=$(echo "$vmlist" | grep -v Domain-0 | awk '{print $1}')
+# get the total and max memory
+XMEN_TOTAL=$(cat /etc/check_mk/xen-vars|awk -F ";" '/dom0_mem_total_command/ {print $2}')
+XMEN_TOTAL=$($XMEN_TOTAL | cut -d . -f1)
+XMEN_TOTAL=$((${XMEN_TOTAL%.*} / 1024))
+XMEN_FREE=$(cat /etc/check_mk/xen-vars|awk -F ";" '/dom0_mem_free_command/ {print $2}')
+XMEN_FREE=$($XMEN_FREE | cut -d . -f1)
+XMEN_FREE=$((${XMEN_FREE%.*} / 1024))
+
+# add in domu ram
+XMEN_DOM=$(cat /etc/check_mk/xen-vars|awk -F ";" '/dom0_mem_use_command/ {print $2}')
+XMEN_DOM=$($XMEN_DOM | awk '/Domain-0/ {print $3}')
+XMEN_DOM=$((XMEN_DOM / 1))
+XMEM="$XMEN_TOTAL $XMEN_FREE $XMEN_DOM"
+
+# Export vars VMs running and Memory for domU
+
+eval 'export running_vms XMEN'
+}
+
+find_mgmt()
+{
+#check if file vars exists
+if [ ! -d "/etc/check_mk" ] || [ ! -e "/etc/check_mk/xen-vars" ]; then
+  executar=$(mkdir -p /etc/check_mk)
+  executar=$(touch /etc/check_mk/xen-vars)
+fi
+cat /etc/check_mk/xen-vars|grep -v command
+checa_comando=$?
+# check if vms list command exist
+if [ ! $checa_comando -eq 0 ];
+   then
+   maquina=$(hostname)
+# find command for vms list (depend of your Xen type)
+   teste_xen=$(which xl 2> /dev/null | head -n 1)
+   if [[ ! -z $teste_xen ]];
+   then
+      vms_list_command=$teste_xen
+      versao_xen=$(expr "$vms_list_command" : '.*\(xm\|xl\)$')
+   fi
+   teste_xen=$(which xm 2> /dev/null | head -n 1)
+   if [[ ! -z $teste_xen ]];
+   then
+      vms_list_command=$teste_xen
+      versao_xen=$(expr "$vms_list_command" : '.*\(xm\|xl\)$')
+   fi
+   case $versao_xen in
+     virsh)
+       echo "Virsh" ;;
+     xm)
+       echo "Citrix" ;;
+     xl)
+#       echo "XCP"
+#set command vm list
+        vms_list_command="$vms_list_command list"
+        echo "vms_list_command;$vms_list_command" > /etc/check_mk/xen-vars
+        xe_command=$(which xe 2> /dev/null | head -n 1)
+# set command domU memory
+        echo "dom0_mem_total_command;$xe_command host-data-source-query data-source=memory_total_kib host=$maquina" >> /etc/check_mk/xen-vars
+        echo "dom0_mem_free_command;$xe_command host-data-source-query data-source=memory_free_kib host=$maquina" >> /etc/check_mk/xen-vars
+        echo "dom0_mem_use_command;$vms_list_command" >> /etc/check_mk/xen-vars
+        return 0
+   esac
+fi
+
+}
+find_mgmt &&
+look_for_xen &&
+setup_cmds &&
+echo "<<<xen>>>" &&
+for vm in $running_vms
+  do 
+   echo vm $vm running
+done
+echo "mem $XMEM"
