@@ -15,7 +15,7 @@ if xend is not working, we'll go to critical regardless of other checks.
 technically nothing needs xend - except that without it you can't migrate vm's
 off a broken host. so this is something we wanna know about.
 
-xen.vms - check
+xen.vms - man
 
 The  check matches the  list of running  virtual machines against  the list of 
  virtual  machines on the host. It will return "OK" if a VM is running, CRIT if 
@@ -24,7 +24,7 @@ The  check matches the  list of running  virtual machines against  the list of
  command  set, support for "xl" as used in  Xen4.2 and up will be added. Citrix 
  XenServer will not be supported.
  
- xem.mem - check
+ xem.mem - man
  
  The  check queries the memory  under hypervisor control on  Xen hosts and will 
  display  the amounts used by dom0, used in  total, and the total memory of the 
